@@ -1,0 +1,46 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/dell/home/www/claude/agent-dashboard/hooks/post_event.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/dell/home/www/claude/agent-dashboard/hooks/post_event.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/dell/home/www/claude/agent-dashboard/hooks/post_event.py"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python C:/Users/dell/home/www/claude/agent-dashboard/hooks/post_event.py"
+          }
+        ]
+      }
+    ]
+  }
+}

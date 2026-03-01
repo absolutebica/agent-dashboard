@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>agent-dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #04080d;
+  --bg-panel:   #080e16;
+  --bg-row:     #0c1520;
+  --bg-hover:   #111e2e;
+  --border:     #1e3048;
+  --border-mid: #2a4668;
+  --border-hi:  #3a5a80;
+  --text:       #a8c8e0;
+  --text-hi:    #d8eaf5;
+  --text-dim:   #5a7a96;
+  --amber:      #e09020;
+  --amber-hi:   #f0a830;
+  --amber-glow: rgba(224,144,32,.12);
+  --green:      #3ec97a;
+  --cyan:       #38b8cc;
+  --red:        #e04848;
+  --purple:     #9b72e8;
+  --yellow:     #c8a83a;
+  --font-mono:  'IBM Plex Mono', 'Courier New', monospace;
+  --font-hud:   'Orbitron', monospace;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.6;
+  overflow: hidden;
+}
+
+/* CRT scanlines overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0px,
+    transparent 3px,
+    rgba(0,0,0,.03) 3px,
+    rgba(0,0,0,.03) 4px
+  );
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Subtle vignette */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.5) 100%);
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* ── LAYOUT ── */
+.app {
+  display: grid;
+  grid-template-rows: 48px 1fr;
+  grid-template-columns: 1fr 220px;
+  height: 100vh;
+  gap: 0;
+}
+
+/* ── HEADER ── */
+header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border-mid);
+  background: var(--bg-panel);
+  gap: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+header::before {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--amber), transparent);
+  opacity: .4;
+}
+
+.hud-title {
+  font-family: var(--font-hud);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: var(--amber-hi);
+  text-shadow: 0 0 12px var(--amber);
+  white-space: nowrap;
+}
+
+.hud-divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-mid);
+}
+
+/* Filter tabs */
+.filters {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+}
+
+.filter-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: .08em;
+  padding: 3px 9px;
+  cursor: pointer;
+  transition: all .15s;
+  text-transform: uppercase;
+}
+
+.filter-btn:hover {
+  color: var(--text-hi);
+  border-color: var(--border-mid);
+}
+
+.filter-btn.active {
+  color: var(--amber-hi);
+  border-color: var(--amber);
+  background: var(--amber-glow);
+  text-shadow: 0 0 8px var(--amber);
+}
+
+.spacer { flex: 1; }
+
+/* Connection status */
+.conn-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.conn-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: background .3s;
+}
+
+.conn-dot.live {
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+.conn-dot.dead { background: var(--red); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .4; }
+}
+
+.hud-clock {
+  font-family: var(--font-hud);
+  font-size: 13px;
+  letter-spacing: .1em;
+  color: var(--amber);
+  min-width: 90px;
+  text-align: right;
+}
+
+.clear-btn {
+  background: none;
+  border: 1px solid var(--border-mid);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 3px 10px;
+  cursor: pointer;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  transition: all .15s;
+}
+
+.clear-btn:hover {
+  color: var(--red);
+  border-color: var(--red);
+}
+
+/* ── EVENT LOG ── */
+.log-pane {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+}
+
+.log-header {
+  display: grid;
+  grid-template-columns: 90px 90px 1fr;
+  gap: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--bg-panel);
+}
+
+.log-body {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+.log-body::-webkit-scrollbar { width: 4px; }
+.log-body::-webkit-scrollbar-track { background: var(--bg); }
+.log-body::-webkit-scrollbar-thumb { background: var(--border-hi); }
+
+.event-row {
+  display: grid;
+  grid-template-columns: 90px 90px 1fr;
+  align-items: start;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+  animation: row-in .2s ease-out;
+  border-left: 2px solid transparent;
+}
+
+@keyframes row-in {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.event-row:hover { background: var(--bg-hover); }
+
+/* type-colored left border */
+.event-row.type-pre      { border-left-color: var(--amber); }
+.event-row.type-post     { border-left-color: var(--green); }
+.event-row.type-stop     { border-left-color: var(--red); }
+.event-row.type-sub-stop { border-left-color: var(--purple); }
+.event-row.type-notify   { border-left-color: var(--cyan); }
+.event-row.type-other    { border-left-color: var(--border-hi); }
+
+.ev-time {
+  color: var(--text-dim);
+  font-size: 13px;
+  padding-top: 1px;
+}
+
+.ev-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .1em;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  width: fit-content;
+}
+
+.badge-pre      { color: var(--amber);  background: rgba(224,144,32,.1);  }
+.badge-post     { color: var(--green);  background: rgba(62,201,122,.1);  }
+.badge-stop     { color: var(--red);    background: rgba(224,72,72,.1);   }
+.badge-sub-stop { color: var(--purple); background: rgba(155,114,232,.1); }
+.badge-notify   { color: var(--cyan);   background: rgba(56,184,204,.1);  }
+.badge-other    { color: var(--text);   background: var(--bg-row);        }
+
+.ev-detail {
+  color: var(--text-hi);
+  font-size: 14px;
+  word-break: break-all;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ev-tool {
+  color: var(--text-hi);
+  font-weight: 500;
+}
+
+.ev-sub {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.ev-dim { color: #7a9eb8; }
+
+.ev-purpose {
+  font-size: 11px;
+  color: var(--amber);
+  opacity: .7;
+  font-style: italic;
+  display: block;
+  margin-bottom: 2px;
+}
+
+.ev-thinking {
+  font-size: 12px;
+  color: var(--text-hi);
+  display: block;
+  margin-bottom: 3px;
+  border-left: 2px solid var(--border-hi);
+  padding-left: 6px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+  letter-spacing: .08em;
+}
+
+.empty-icon {
+  font-size: 28px;
+  opacity: .3;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  background: var(--bg-panel);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.sidebar::-webkit-scrollbar { width: 3px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border-hi); }
+
+.side-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.side-label {
+  font-size: 11px;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.side-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 3px 0;
+}
+
+.stat-label {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.stat-val {
+  font-size: 16px;
+  font-weight: 600;
+  font-family: var(--font-hud);
+  transition: color .2s;
+}
+
+.stat-val.v-amber  { color: var(--amber); }
+.stat-val.v-green  { color: var(--green); }
+.stat-val.v-red    { color: var(--red); }
+.stat-val.v-purple { color: var(--purple); }
+.stat-val.v-cyan   { color: var(--cyan); }
+.stat-val.v-dim    { color: var(--text-dim); }
+
+/* mini sparkbar */
+.spark-bar {
+  height: 2px;
+  background: var(--border);
+  margin: 6px 0 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.spark-fill {
+  height: 100%;
+  background: var(--amber);
+  transition: width .4s ease;
+  box-shadow: 0 0 6px var(--amber);
+}
+
+/* agent list */
+.agent-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.agent-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green);
+  flex-shrink: 0;
+}
+
+.agent-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agent-count { color: var(--text-dim); font-size: 12px; }
+
+/* rate indicator */
+.rate-box {
+  text-align: center;
+  padding: 8px;
+  background: var(--bg-row);
+  border: 1px solid var(--border);
+  margin-top: 6px;
+}
+
+.rate-num {
+  font-family: var(--font-hud);
+  font-size: 26px;
+  color: var(--amber-hi);
+  text-shadow: 0 0 10px var(--amber);
+  line-height: 1.2;
+}
+
+.rate-unit { font-size: 11px; color: var(--text-dim); letter-spacing: .1em; text-transform: uppercase; }
+
+/* recent tools */
+.tool-tag {
+  display: inline-block;
+  font-size: 12px;
+  padding: 2px 7px;
+  margin: 2px;
+  background: var(--bg-row);
+  border: 1px solid var(--border-mid);
+  color: var(--text);
+  transition: all .15s;
+}
+
+.tool-tag:hover { border-color: var(--amber); color: var(--amber-hi); }
+
+/* scroll-to-bottom fab */
+.fab {
+  position: fixed;
+  bottom: 16px;
+  left: calc(100% - 260px);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-hi);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 5px 12px;
+  cursor: pointer;
+  letter-spacing: .08em;
+  transition: all .15s;
+  display: none;
+}
+
+.fab:hover { border-color: var(--amber); color: var(--amber-hi); }
+.fab.visible { display: block; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="hud-title">AGENT DASHBOARD</div>
+    <div class="hud-divider"></div>
+    <div class="filters" id="filters">
+      <button class="filter-btn active" data-filter="all">All</button>
+      <button class="filter-btn" data-filter="pre">Pre</button>
+      <button class="filter-btn" data-filter="post">Post</button>
+      <button class="filter-btn" data-filter="stop">Stop</button>
+      <button class="filter-btn" data-filter="notify">Notify</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="clear-btn" id="clearBtn">Clear</button>
+    <div class="hud-divider"></div>
+    <div class="conn-status">
+      <div class="conn-dot" id="connDot"></div>
+      <span id="connLabel">CONNECTING</span>
+    </div>
+    <div class="hud-divider"></div>
+    <div class="hud-clock" id="clock">--:--:--</div>
+  </header>
+
+  <!-- EVENT LOG -->
+  <div class="log-pane">
+    <div class="log-header">
+      <span>TIME</span>
+      <span>TYPE</span>
+      <span>DETAIL</span>
+    </div>
+    <div class="log-body" id="logBody">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">◈</div>
+        <div>Waiting for hook events&hellip;</div>
+        <div style="color:var(--text-dim);font-size:11px;letter-spacing:.08em">START SERVER · ADD HOOKS · WATCH AGENTS</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <div class="side-section">
+      <div class="side-label">Event Rate</div>
+      <div class="rate-box">
+        <div class="rate-num" id="rateNum">0</div>
+        <div class="rate-unit">events / min</div>
+      </div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Totals</div>
+      <div class="stat-row"><span class="stat-label">Total</span>       <span class="stat-val v-amber"  id="sTot">0</span></div>
+      <div class="stat-row"><span class="stat-label">PreToolUse</span>  <span class="stat-val v-amber"  id="sPre">0</span></div>
+      <div class="stat-row"><span class="stat-label">PostToolUse</span> <span class="stat-val v-green"  id="sPost">0</span></div>
+      <div class="stat-row"><span class="stat-label">Stop</span>        <span class="stat-val v-red"    id="sStop">0</span></div>
+      <div class="stat-row"><span class="stat-label">Notification</span><span class="stat-val v-cyan"   id="sNotify">0</span></div>
+      <div class="stat-row"><span class="stat-label">SubagentStop</span><span class="stat-val v-purple" id="sSub">0</span></div>
+      <div class="spark-bar"><div class="spark-fill" id="sparkFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Sessions</div>
+      <div id="agentList"><div style="color:var(--text-dim);font-size:13px">None yet</div></div>
+    </div>
+
+    <div class="side-section">
+      <div class="side-label">Recent Tools</div>
+      <div id="toolTags"><div style="color:var(--text-dim);font-size:13px">None yet</div></div>
+    </div>
+
+  </div>
+</div>
+
+<button class="fab" id="fab">↓ scroll to latest</button>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  events: [],
+  filter: 'all',
+  paused: false,
+  stats: { total: 0, pre: 0, post: 0, stop: 0, notify: 0, sub: 0 },
+  sessions: {},   // session_id → { id, count, lastSeen }
+  tools: {},      // tool_name → count
+  rateBucket: [], // timestamps for rate calculation
+};
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const logBody    = document.getElementById('logBody');
+const emptyState = document.getElementById('emptyState');
+const connDot    = document.getElementById('connDot');
+const connLabel  = document.getElementById('connLabel');
+const clock      = document.getElementById('clock');
+const fab        = document.getElementById('fab');
+
+// ── Clock ────────────────────────────────────────────────────────────────────
+function tickClock() {
+  const now = new Date();
+  clock.textContent =
+    String(now.getHours()).padStart(2,'0') + ':' +
+    String(now.getMinutes()).padStart(2,'0') + ':' +
+    String(now.getSeconds()).padStart(2,'0');
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ── Event classification ──────────────────────────────────────────────────────
+function classify(ev) {
+  const name = (ev.hook_event_name || ev.type || '').toLowerCase();
+  if (name.includes('pretool'))   return 'pre';
+  if (name.includes('posttool'))  return 'post';
+  if (name.includes('subagent'))  return 'sub-stop';
+  if (name.includes('stop'))      return 'stop';
+  if (name.includes('notif'))     return 'notify';
+  return 'other';
+}
+
+const BADGE_MAP = {
+  'pre':      ['PRE',    'badge-pre'],
+  'post':     ['POST',   'badge-post'],
+  'stop':     ['STOP',   'badge-stop'],
+  'sub-stop': ['SUBST',  'badge-sub-stop'],
+  'notify':   ['NOTIF',  'badge-notify'],
+  'other':    ['EVENT',  'badge-other'],
+};
+
+function formatTime(ts) {
+  const d = new Date(ts * 1000);
+  return String(d.getHours()).padStart(2,'0') + ':' +
+         String(d.getMinutes()).padStart(2,'0') + ':' +
+         String(d.getSeconds()).padStart(2,'0') + '.' +
+         String(d.getMilliseconds()).padStart(3,'0').slice(0,2);
+}
+
+function shortPath(p) {
+  if (!p || typeof p !== 'string') return '';
+  const parts = p.replace(/\\/g, '/').split('/');
+  if (parts.length <= 3) return p;
+  return '…/' + parts.slice(-2).join('/');
+}
+
+// ── Bash command → human label ────────────────────────────────────────────────
+function summariseBash(cmd) {
+  if (!cmd) return null;
+  const s = cmd.trim();
+
+  // cd
+  const cdM = s.match(/^cd\s+(.+)/);
+  if (cdM) return { verb: 'Navigate', detail: shortPath(cdM[1].trim()) };
+
+  // grep / rg
+  const grepM = s.match(/(?:grep|rg)\s+(?:-[^\s]+\s+)*["']?([^"'\s]+)["']?\s*(.*)/);
+  if (grepM) return { verb: 'Search', detail: `"${grepM[1]}"${grepM[2] ? ' in ' + shortPath(grepM[2].trim()) : ''}` };
+
+  // find
+  const findM = s.match(/^find\s+(\S+)\s*(.*)/);
+  if (findM) return { verb: 'Find', detail: shortPath(findM[1]) + (findM[2] ? ' ' + findM[2].slice(0, 40) : '') };
+
+  // cat / head / tail
+  const catM = s.match(/^(?:cat|head|tail)\s+(.+)/);
+  if (catM) return { verb: 'Read', detail: shortPath(catM[1].trim().split(/\s+/)[0]) };
+
+  // ls / dir
+  const lsM = s.match(/^(?:ls|dir)\s*(.*)/);
+  if (lsM) return { verb: 'List', detail: shortPath(lsM[1].trim() || '.') };
+
+  // git
+  const gitM = s.match(/^git\s+(\S+)\s*(.*)/);
+  if (gitM) return { verb: `git ${gitM[1]}`, detail: gitM[2].slice(0, 60) };
+
+  // pip / npm / bun / yarn
+  const pkgM = s.match(/^(?:pip|npm|bun|yarn|pnpm)\s+(\S+)\s*(.*)/);
+  if (pkgM) return { verb: pkgM[0].split(' ')[0] + ' ' + pkgM[1], detail: pkgM[2].slice(0, 60) };
+
+  // python / node / ts-node
+  const runM = s.match(/^(?:python3?|node|ts-node|bun)\s+(.+)/);
+  if (runM) return { verb: 'Run', detail: shortPath(runM[1].trim().split(/\s+/)[0]) };
+
+  // mkdir
+  const mkM = s.match(/^mkdir\s+(?:-[p]+\s+)?(.+)/);
+  if (mkM) return { verb: 'Mkdir', detail: shortPath(mkM[1].trim()) };
+
+  // rm
+  const rmM = s.match(/^rm\s+(.+)/);
+  if (rmM) return { verb: 'Remove', detail: rmM[1].trim().slice(0, 60) };
+
+  // echo / printf
+  const echoM = s.match(/^(?:echo|printf)\s+(.*)/);
+  if (echoM) return { verb: 'Echo', detail: echoM[1].slice(0, 60) };
+
+  // fallback — show first 70 chars of raw command
+  return { verb: 'Shell', detail: s.slice(0, 70) };
+}
+
+function buildDetail(ev, type) {
+  const tool  = ev.tool_name || '';
+  const input = ev.tool_input || {};
+  const lines = [];
+
+  // ── Purpose banner (first user message of session) ───────────────────────
+  if (ev.agent_purpose) {
+    lines.push(`<span class="ev-purpose">Task: ${ev.agent_purpose.slice(0, 120)}</span>`);
+  }
+
+  // ── Agent thinking (most recent assistant text before this tool call) ─────
+  if (ev.agent_thinking) {
+    lines.push(`<span class="ev-thinking">${ev.agent_thinking.slice(0, 160)}</span>`);
+  }
+
+  // ── Tool label ────────────────────────────────────────────────────────────
+  if (tool === 'Bash' && input.command) {
+    const s = summariseBash(input.command);
+    if (s) {
+      lines.push(`<span class="ev-tool">${s.verb}</span>`);
+      if (s.detail) lines.push(`<span class="ev-sub">${s.detail}</span>`);
+    }
+  } else {
+    if (tool) lines.push(`<span class="ev-tool">${tool}</span>`);
+
+    const fp = input.file_path || input.path || input.notebook_path || '';
+    if (fp) lines.push(`<span class="ev-sub">${shortPath(fp)}</span>`);
+
+    if (input.pattern) lines.push(`<span class="ev-sub ev-dim">pattern: ${input.pattern}</span>`);
+    if (input.glob)    lines.push(`<span class="ev-sub ev-dim">glob: ${input.glob}</span>`);
+
+    if (input.description)
+      lines.push(`<span class="ev-sub ev-dim">${input.description.slice(0, 80)}</span>`);
+  }
+
+  // ── PostToolUse result snippet ────────────────────────────────────────────
+  if (type === 'post' && ev.tool_result) {
+    const res = ev.tool_result;
+    const snippet = typeof res === 'string'
+      ? res.slice(0, 80).replace(/\n/g, '↵')
+      : JSON.stringify(res).slice(0, 80);
+    lines.push(`<span class="ev-sub ev-dim">✓ ${snippet}</span>`);
+  }
+
+  // ── Notification / generic ────────────────────────────────────────────────
+  if (type === 'notify' || type === 'other') {
+    const msg = ev.message || ev.notification || JSON.stringify(ev).slice(0, 80);
+    lines.push(`<span class="ev-sub">${msg}</span>`);
+  }
+
+  return lines.join('') || '<span class="ev-dim">—</span>';
+}
+
+// ── Render a single row ───────────────────────────────────────────────────────
+function createRow(ev) {
+  const type = classify(ev);
+  const [badgeText, badgeClass] = BADGE_MAP[type] || BADGE_MAP.other;
+
+  const row = document.createElement('div');
+  row.className = `event-row type-${type}`;
+  row.dataset.type = type;
+
+  row.innerHTML =
+    `<div class="ev-time">${formatTime(ev.ts)}</div>` +
+    `<div><span class="ev-badge ${badgeClass}">${badgeText}</span></div>` +
+    `<div class="ev-detail">${buildDetail(ev, type)}</div>`;
+
+  return row;
+}
+
+// ── Filter helper ─────────────────────────────────────────────────────────────
+function typeMatchesFilter(type, filter) {
+  if (filter === 'all') return true;
+  if (filter === 'pre')    return type === 'pre';
+  if (filter === 'post')   return type === 'post';
+  if (filter === 'stop')   return type === 'stop' || type === 'sub-stop';
+  if (filter === 'notify') return type === 'notify';
+  return false;
+}
+
+// ── Append event to DOM ───────────────────────────────────────────────────────
+function appendEvent(ev) {
+  const type = classify(ev);
+  if (!typeMatchesFilter(type, state.filter)) return;
+
+  if (emptyState.parentNode) emptyState.remove();
+
+  const row = createRow(ev);
+  logBody.appendChild(row);
+
+  if (!state.paused) {
+    row.scrollIntoView({ block: 'end', behavior: 'auto' });
+  }
+}
+
+// ── Re-render entire log ──────────────────────────────────────────────────────
+function renderLog() {
+  logBody.innerHTML = '';
+  const filtered = state.events.filter(ev =>
+    typeMatchesFilter(classify(ev), state.filter)
+  );
+
+  if (filtered.length === 0) {
+    logBody.appendChild(emptyState);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  filtered.forEach(ev => frag.appendChild(createRow(ev)));
+  logBody.appendChild(frag);
+  logBody.scrollTop = logBody.scrollHeight;
+}
+
+// ── Update sidebar stats ──────────────────────────────────────────────────────
+let rateInterval;
+
+function updateStats() {
+  const s = state.stats;
+  document.getElementById('sTot').textContent    = s.total;
+  document.getElementById('sPre').textContent    = s.pre;
+  document.getElementById('sPost').textContent   = s.post;
+  document.getElementById('sStop').textContent   = s.stop;
+  document.getElementById('sNotify').textContent = s.notify;
+  document.getElementById('sSub').textContent    = s.sub;
+
+  // sparkbar: post/(pre+1) ratio
+  const ratio = s.pre ? Math.min(s.post / s.pre, 1) : 0;
+  document.getElementById('sparkFill').style.width = (ratio * 100) + '%';
+}
+
+function updateSessions(ev) {
+  const sid = ev.session_id || 'unknown';
+  if (!state.sessions[sid]) state.sessions[sid] = { count: 0, lastTool: '' };
+  state.sessions[sid].count++;
+  if (ev.tool_name) state.sessions[sid].lastTool = ev.tool_name;
+
+  const el = document.getElementById('agentList');
+  el.innerHTML = '';
+  Object.entries(state.sessions).slice(-6).reverse().forEach(([id, info]) => {
+    const item = document.createElement('div');
+    item.className = 'agent-item';
+    item.innerHTML =
+      `<div class="agent-dot"></div>` +
+      `<div class="agent-name">${id.slice(0, 12)}</div>` +
+      `<div class="agent-count">${info.count}</div>`;
+    el.appendChild(item);
+  });
+}
+
+function updateTools(ev) {
+  if (!ev.tool_name) return;
+  state.tools[ev.tool_name] = (state.tools[ev.tool_name] || 0) + 1;
+
+  const el = document.getElementById('toolTags');
+  el.innerHTML = '';
+  Object.entries(state.tools)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .forEach(([name, count]) => {
+      const tag = document.createElement('span');
+      tag.className = 'tool-tag';
+      tag.title = `${count} calls`;
+      tag.textContent = name;
+      el.appendChild(tag);
+    });
+}
+
+function computeRate() {
+  const now = Date.now();
+  const min = now - 60_000;
+  state.rateBucket = state.rateBucket.filter(t => t > min);
+  document.getElementById('rateNum').textContent = state.rateBucket.length;
+}
+
+// ── Ingest event ──────────────────────────────────────────────────────────────
+function ingest(ev) {
+  state.events.push(ev);
+  if (state.events.length > 2000) state.events.splice(0, 500);
+
+  // Stats
+  const type = classify(ev);
+  state.stats.total++;
+  if (type === 'pre')      state.stats.pre++;
+  if (type === 'post')     state.stats.post++;
+  if (type === 'stop' || type === 'sub-stop') state.stats.stop++;
+  if (type === 'notify')   state.stats.notify++;
+  if (type === 'sub-stop') state.stats.sub++;
+
+  state.rateBucket.push(Date.now());
+
+  appendEvent(ev);
+  updateStats();
+  updateSessions(ev);
+  updateTools(ev);
+}
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+let ws;
+let reconnectTimer;
+
+function connect() {
+  const url = `ws://${location.host}/ws`;
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    connDot.className = 'conn-dot live';
+    connLabel.textContent = 'LIVE';
+  };
+
+  ws.onmessage = (msg) => {
+    try { ingest(JSON.parse(msg.data)); } catch {}
+  };
+
+  ws.onclose = () => {
+    connDot.className = 'conn-dot dead';
+    connLabel.textContent = 'OFFLINE';
+    reconnectTimer = setTimeout(connect, 3000);
+  };
+
+  ws.onerror = () => ws.close();
+}
+
+connect();
+setInterval(computeRate, 5000);
+
+// ── Scroll pause detection ────────────────────────────────────────────────────
+logBody.addEventListener('scroll', () => {
+  const atBottom = logBody.scrollTop + logBody.clientHeight >= logBody.scrollHeight - 40;
+  state.paused = !atBottom;
+  fab.classList.toggle('visible', state.paused);
+});
+
+fab.addEventListener('click', () => {
+  logBody.scrollTop = logBody.scrollHeight;
+  state.paused = false;
+  fab.classList.remove('visible');
+});
+
+// ── Filter buttons ────────────────────────────────────────────────────────────
+document.getElementById('filters').addEventListener('click', (e) => {
+  const btn = e.target.closest('.filter-btn');
+  if (!btn) return;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  state.filter = btn.dataset.filter;
+  renderLog();
+});
+
+// ── Clear ─────────────────────────────────────────────────────────────────────
+document.getElementById('clearBtn').addEventListener('click', () => {
+  state.events = [];
+  state.stats = { total: 0, pre: 0, post: 0, stop: 0, notify: 0, sub: 0 };
+  state.sessions = {};
+  state.tools = {};
+  state.rateBucket = [];
+  renderLog();
+  updateStats();
+  document.getElementById('agentList').innerHTML = '<div style="color:var(--text-dim);font-size:13px">None yet</div>';
+  document.getElementById('toolTags').innerHTML  = '<div style="color:var(--text-dim);font-size:13px">None yet</div>';
+  document.getElementById('rateNum').textContent = '0';
+});
+</script>
+</body>
+</html>
