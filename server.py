@@ -21,7 +21,7 @@ MAX_EVENTS = 500
 app = FastAPI(title="agent-dashboard")
 event_buffer: deque[dict[str, Any]] = deque(maxlen=MAX_EVENTS)
 clients: set[WebSocket] = set()
-work_board: dict[str, str] = {}
+work_board: dict[str, Any] = {}
 
 
 async def board_broadcast() -> None:
