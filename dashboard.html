@@ -477,6 +477,26 @@ header::before {
 
 .tool-tag:hover { border-color: var(--amber); color: var(--amber-hi); }
 
+.board-item {
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.board-item:last-child { border-bottom: none; }
+
+.board-sid {
+  font-size: 10px;
+  color: var(--amber);
+  letter-spacing: .08em;
+  margin-bottom: 2px;
+}
+
+.board-task {
+  font-size: 12.5px;
+  color: var(--text-hi);
+  line-height: 1.4;
+}
+
 /* scroll-to-bottom fab */
 .fab {
   position: fixed;
@@ -541,6 +561,13 @@ header::before {
 
   <!-- SIDEBAR -->
   <div class="sidebar">
+
+    <div class="side-section">
+      <div class="side-label">Work Board</div>
+      <div id="workBoard">
+        <div style="color:var(--text-dim);font-size:13px">No active claims</div>
+      </div>
+    </div>
 
     <div class="side-section">
       <div class="side-label">Event Rate</div>
