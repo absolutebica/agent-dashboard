@@ -876,6 +876,14 @@ function buildDetail(ev, type) {
       lines.push(`<span class="ev-tool">${esc(s.verb)}</span>`);
       if (s.detail) lines.push(`<span class="ev-sub">${esc(s.detail)}</span>`);
     }
+  } else if (tool === 'Skill' && input.skill) {
+    lines.push(`<span class="ev-tool">Skill</span>`);
+    lines.push(`<span class="ev-sub">${esc(input.skill)}</span>`);
+    if (input.args) lines.push(`<span class="ev-sub ev-dim">${esc(String(input.args).slice(0, 80))}</span>`);
+  } else if (tool === 'Agent' && input.subagent_type) {
+    lines.push(`<span class="ev-tool">Agent</span>`);
+    lines.push(`<span class="ev-sub">${esc(input.subagent_type)}</span>`);
+    if (input.description) lines.push(`<span class="ev-sub ev-dim">${esc(input.description.slice(0, 80))}</span>`);
   } else {
     if (tool) lines.push(`<span class="ev-tool">${esc(tool)}</span>`);
 
