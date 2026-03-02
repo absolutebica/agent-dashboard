@@ -277,6 +277,83 @@ header::before {
 
 .project-hidden { display: none !important; }
 
+.pane-tabs {
+  display: flex;
+  gap: 1px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-mid);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.pane-tabs::-webkit-scrollbar { height: 2px; }
+.pane-tabs::-webkit-scrollbar-thumb { background: var(--border-hi); }
+
+.pane-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: .06em;
+  padding: 6px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+
+.pane-tab:hover { color: var(--text-hi); }
+
+.pane-tab.active {
+  color: var(--amber-hi);
+  border-bottom-color: var(--amber);
+}
+
+.panes-area {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.agent-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  min-width: 0;
+}
+
+.agent-pane:last-child { border-right: none; }
+.agent-pane.hidden { display: none; }
+
+.pane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.pane-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.pane-dot.active {
+  background: var(--green);
+  box-shadow: 0 0 5px var(--green);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
 .event-row {
   display: grid;
   grid-template-columns: 90px 90px 1fr;
@@ -585,16 +662,21 @@ header::before {
     <div class="project-tabs" id="projectTabs">
       <button class="project-tab active" data-project="all">All Projects</button>
     </div>
-    <div class="log-header">
-      <span>TIME</span>
-      <span>TYPE</span>
-      <span>DETAIL</span>
+    <div class="pane-tabs" id="paneTabs">
+      <button class="pane-tab active" data-session="all">All</button>
     </div>
-    <div class="log-body" id="logBody">
-      <div class="empty-state" id="emptyState">
-        <div class="empty-icon">◈</div>
-        <div>Waiting for hook events&hellip;</div>
-        <div style="color:var(--text-dim);font-size:11px;letter-spacing:.08em">START SERVER · ADD HOOKS · WATCH AGENTS</div>
+    <div class="panes-area" id="panesArea">
+      <div class="agent-pane" id="pane-all" data-session="all">
+        <div class="log-header">
+          <span>TIME</span><span>TYPE</span><span>DETAIL</span>
+        </div>
+        <div class="log-body" id="logBody">
+          <div class="empty-state" id="emptyState">
+            <div class="empty-icon">◈</div>
+            <div>Waiting for hook events&hellip;</div>
+            <div style="color:var(--text-dim);font-size:11px;letter-spacing:.08em">START SERVER · ADD HOOKS · WATCH AGENTS</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -649,6 +731,7 @@ const state = {
   events: [],
   filter: 'all',
   paused: false,
+  panes: {},            // session_id → { pane, lastSeen }
   currentProject: 'all',
   projectSessions: {},
   stats: { total: 0, pre: 0, post: 0, stop: 0, notify: 0, sub: 0 },
@@ -967,6 +1050,52 @@ document.getElementById('projectTabs').addEventListener('click', (e) => {
   if (tab) switchProject(tab.dataset.project);
 });
 
+// ── Per-session panes ─────────────────────────────────────────────────────────
+function getOrCreatePane(sessionId) {
+  if (state.panes[sessionId]) return state.panes[sessionId];
+
+  const pane = document.createElement('div');
+  pane.className = 'agent-pane hidden';
+  pane.dataset.session = sessionId;
+  pane.innerHTML =
+    `<div class="pane-header">` +
+      `<div class="pane-dot" id="dot-${sessionId}"></div>` +
+      `<span>${sessionId.slice(0, 12)}</span>` +
+    `</div>` +
+    `<div class="log-header"><span>TIME</span><span>TYPE</span><span>DETAIL</span></div>` +
+    `<div class="log-body" id="body-${sessionId}"></div>`;
+
+  document.getElementById('panesArea').appendChild(pane);
+
+  const tab = document.createElement('button');
+  tab.className = 'pane-tab';
+  tab.dataset.session = sessionId;
+  tab.textContent = sessionId.slice(0, 8);
+  tab.addEventListener('click', () => switchTab(sessionId));
+  document.getElementById('paneTabs').appendChild(tab);
+
+  state.panes[sessionId] = { pane, lastSeen: 0 };
+  return state.panes[sessionId];
+}
+
+function switchTab(sessionId) {
+  document.querySelectorAll('.pane-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.session === sessionId)
+  );
+  if (sessionId === 'all') {
+    document.querySelectorAll('.agent-pane').forEach(p => p.classList.remove('hidden'));
+  } else {
+    document.querySelectorAll('.agent-pane').forEach(p =>
+      p.classList.toggle('hidden', p.dataset.session !== sessionId)
+    );
+  }
+}
+
+document.getElementById('paneTabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.pane-tab');
+  if (tab) switchTab(tab.dataset.session);
+});
+
 // ── Ingest event ──────────────────────────────────────────────────────────────
 function ingest(ev) {
   state.events.push(ev);
@@ -984,6 +1113,26 @@ function ingest(ev) {
   state.rateBucket.push(Date.now());
 
   appendEvent(ev);
+
+  // Append to per-session pane
+  const sid = ev.session_id;
+  if (sid) {
+    getOrCreatePane(sid);
+    const body = document.getElementById(`body-${sid}`);
+    if (body && typeMatchesFilter(type, state.filter)) {
+      const row = createRow(ev);
+      body.appendChild(row);
+      if (!state.paused) row.scrollIntoView({ block: 'end', behavior: 'auto' });
+    }
+    state.panes[sid].lastSeen = Date.now();
+    const dot = document.getElementById(`dot-${sid}`);
+    if (dot) {
+      dot.classList.add('active');
+      clearTimeout(dot._timer);
+      dot._timer = setTimeout(() => dot.classList.remove('active'), 10000);
+    }
+  }
+
   updateStats();
   updateSessions(ev);
   updateTools(ev);
@@ -1088,6 +1237,10 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   state.sessions = {};
   state.tools = {};
   state.rateBucket = [];
+  Object.keys(state.panes).forEach(sid => {
+    const body = document.getElementById(`body-${sid}`);
+    if (body) body.innerHTML = '';
+  });
   renderLog();
   updateStats();
   document.getElementById('agentList').innerHTML = '<div style="color:var(--text-dim);font-size:13px">None yet</div>';
