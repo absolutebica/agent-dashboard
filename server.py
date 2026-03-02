@@ -45,6 +45,8 @@ async def claim_task(session_id: str, task: str) -> str:
     """Register what you are currently working on to coordinate with other agents.
     Call this before starting any significant task. Pass your session_id from
     the hook event payload."""
+    if session_id not in work_board and len(work_board) >= 200:
+        return "board full"
     work_board[session_id] = task
     await board_broadcast()
     return "ok"

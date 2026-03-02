@@ -794,6 +794,13 @@ function shortPath(p) {
   return '…/' + parts.slice(-2).join('/');
 }
 
+// ── XSS escape helper ────────────────────────────────────────────────────────
+function esc(str) {
+  const tmp = document.createElement('div');
+  tmp.textContent = String(str ?? '');
+  return tmp.innerHTML;
+}
+
 // ── Bash command → human label ────────────────────────────────────────────────
 function summariseBash(cmd) {
   if (!cmd) return null;
@@ -854,32 +861,32 @@ function buildDetail(ev, type) {
 
   // ── Purpose banner (first user message of session) ───────────────────────
   if (ev.agent_purpose) {
-    lines.push(`<span class="ev-purpose">Task: ${ev.agent_purpose.slice(0, 120)}</span>`);
+    lines.push(`<span class="ev-purpose">Task: ${esc(ev.agent_purpose.slice(0, 120))}</span>`);
   }
 
   // ── Agent thinking (most recent assistant text before this tool call) ─────
   if (ev.agent_thinking) {
-    lines.push(`<span class="ev-thinking">${ev.agent_thinking.slice(0, 160)}</span>`);
+    lines.push(`<span class="ev-thinking">${esc(ev.agent_thinking.slice(0, 160))}</span>`);
   }
 
   // ── Tool label ────────────────────────────────────────────────────────────
   if (tool === 'Bash' && input.command) {
     const s = summariseBash(input.command);
     if (s) {
-      lines.push(`<span class="ev-tool">${s.verb}</span>`);
-      if (s.detail) lines.push(`<span class="ev-sub">${s.detail}</span>`);
+      lines.push(`<span class="ev-tool">${esc(s.verb)}</span>`);
+      if (s.detail) lines.push(`<span class="ev-sub">${esc(s.detail)}</span>`);
     }
   } else {
-    if (tool) lines.push(`<span class="ev-tool">${tool}</span>`);
+    if (tool) lines.push(`<span class="ev-tool">${esc(tool)}</span>`);
 
     const fp = input.file_path || input.path || input.notebook_path || '';
-    if (fp) lines.push(`<span class="ev-sub">${shortPath(fp)}</span>`);
+    if (fp) lines.push(`<span class="ev-sub">${esc(shortPath(fp))}</span>`);
 
-    if (input.pattern) lines.push(`<span class="ev-sub ev-dim">pattern: ${input.pattern}</span>`);
-    if (input.glob)    lines.push(`<span class="ev-sub ev-dim">glob: ${input.glob}</span>`);
+    if (input.pattern) lines.push(`<span class="ev-sub ev-dim">pattern: ${esc(input.pattern)}</span>`);
+    if (input.glob)    lines.push(`<span class="ev-sub ev-dim">glob: ${esc(input.glob)}</span>`);
 
     if (input.description)
-      lines.push(`<span class="ev-sub ev-dim">${input.description.slice(0, 80)}</span>`);
+      lines.push(`<span class="ev-sub ev-dim">${esc(input.description.slice(0, 80))}</span>`);
   }
 
   // ── PostToolUse result snippet ────────────────────────────────────────────
@@ -888,13 +895,13 @@ function buildDetail(ev, type) {
     const snippet = typeof res === 'string'
       ? res.slice(0, 80).replace(/\n/g, '↵')
       : JSON.stringify(res).slice(0, 80);
-    lines.push(`<span class="ev-sub ev-dim">✓ ${snippet}</span>`);
+    lines.push(`<span class="ev-sub ev-dim">✓ ${esc(snippet)}</span>`);
   }
 
   // ── Notification / generic ────────────────────────────────────────────────
   if (type === 'notify' || type === 'other') {
     const msg = ev.message || ev.notification || JSON.stringify(ev).slice(0, 80);
-    lines.push(`<span class="ev-sub">${msg}</span>`);
+    lines.push(`<span class="ev-sub">${esc(msg)}</span>`);
   }
 
   return lines.join('') || '<span class="ev-dim">—</span>';
