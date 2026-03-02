@@ -1127,7 +1127,7 @@ function getOrCreatePane(sessionId) {
   pane.innerHTML =
     `<div class="pane-header">` +
       `<div class="pane-dot" id="dot-${sessionId}"></div>` +
-      `<span class="pane-title">${sessionId.slice(0, 12)}</span>` +
+      `<span class="pane-title" id="title-${sessionId}">${sessionId.slice(0, 8)}</span>` +
     `</div>` +
     `<div class="log-header"><span>TIME</span><span>TYPE</span><span>DETAIL</span></div>` +
     `<div class="log-body" id="body-${sessionId}"></div>`;
@@ -1194,6 +1194,11 @@ function ingest(ev) {
       if (!state.paused) row.scrollIntoView({ block: 'end', behavior: 'auto' });
     }
     state.panes[sid].lastSeen = Date.now();
+    if (ev.agent_purpose && !state.panes[sid].purpose) {
+      state.panes[sid].purpose = ev.agent_purpose;
+      const titleEl = document.getElementById(`title-${sid}`);
+      if (titleEl) titleEl.textContent = ev.agent_purpose.slice(0, 40);
+    }
     const dot = document.getElementById(`dot-${sid}`);
     if (dot) {
       dot.classList.add('active');
