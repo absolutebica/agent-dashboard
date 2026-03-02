@@ -1019,7 +1019,7 @@ function updateStats() {
 }
 
 function updateSessions(ev) {
-  const sid = ev.session_id || 'unknown';
+  const sid = ev.pane_id || ev.session_id || 'unknown';
   if (!state.sessions[sid]) state.sessions[sid] = { count: 0, lastTool: '' };
   state.sessions[sid].count++;
   if (ev.tool_name) state.sessions[sid].lastTool = ev.tool_name;
@@ -1183,8 +1183,9 @@ function ingest(ev) {
 
   appendEvent(ev);
 
-  // Append to per-session pane
-  const sid = ev.session_id;
+  // Append to per-session pane — use pane_id (transcript stem) to distinguish
+  // sub-agents that share the parent session_id
+  const sid = ev.pane_id || ev.session_id;
   if (sid) {
     getOrCreatePane(sid);
     const body = document.getElementById(`body-${sid}`);

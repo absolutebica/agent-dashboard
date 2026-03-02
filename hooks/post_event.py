@@ -108,6 +108,14 @@ def main() -> None:
         transcript_path = event.get("transcript_path", "")
         session_id = event.get("session_id", "")
 
+        # Use transcript filename as pane_id so sub-agents get their own panes
+        # even when they share the parent's session_id
+        if transcript_path:
+            pane_id = Path(transcript_path).stem
+        else:
+            pane_id = session_id
+        event["pane_id"] = pane_id
+
         if transcript_path and session_id:
             purpose = get_agent_purpose(transcript_path, session_id)
             if purpose:
