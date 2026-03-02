@@ -312,21 +312,38 @@ header::before {
 
 .panes-area {
   flex: 1;
-  display: flex;
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-auto-rows: 100%;
+  overflow-y: auto;
   min-height: 0;
 }
 
 .agent-pane {
-  flex: 1;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.agent-pane:last-child { border-right: none; }
 .agent-pane.hidden { display: none; }
+
+/* Per-pane colour identities */
+.agent-pane[data-color="0"] { background: #060c18; border-top: 2px solid #2a5a8a; }
+.agent-pane[data-color="0"] .pane-header { background: #0a1422; }
+.agent-pane[data-color="1"] { background: #060e0c; border-top: 2px solid #1a7850; }
+.agent-pane[data-color="1"] .pane-header { background: #0a1610; }
+.agent-pane[data-color="2"] { background: #0e0916; border-top: 2px solid #6040a0; }
+.agent-pane[data-color="2"] .pane-header { background: #14101e; }
+.agent-pane[data-color="3"] { background: #0c0e06; border-top: 2px solid #6a9010; }
+.agent-pane[data-color="3"] .pane-header { background: #12160a; }
+.agent-pane[data-color="4"] { background: #140c04; border-top: 2px solid #c07810; }
+.agent-pane[data-color="4"] .pane-header { background: #1c1208; }
+.agent-pane[data-color="5"] { background: #140608; border-top: 2px solid #b02030; }
+.agent-pane[data-color="5"] .pane-header { background: #1c0c10; }
 
 .pane-header {
   display: flex;
@@ -338,6 +355,13 @@ header::before {
   font-size: 11px;
   color: var(--text-dim);
   flex-shrink: 0;
+}
+
+.pane-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-hi);
+  letter-spacing: .05em;
 }
 
 .pane-dot {
@@ -732,6 +756,7 @@ const state = {
   filter: 'all',
   paused: false,
   panes: {},            // session_id → { pane, lastSeen }
+  paneColorIdx: 0,
   currentProject: 'all',
   projectSessions: {},
   stats: { total: 0, pre: 0, post: 0, stop: 0, notify: 0, sub: 0 },
@@ -1065,17 +1090,44 @@ document.getElementById('projectTabs').addEventListener('click', (e) => {
   if (tab) switchProject(tab.dataset.project);
 });
 
+// ── Grid layout: 1 col, 2 cols, or 3-col wrap ─────────────────────────────────
+function updatePanesLayout() {
+  const area = document.getElementById('panesArea');
+  const visible = area.querySelectorAll('.agent-pane:not(.hidden)');
+  const count = visible.length;
+  if (count === 0) return;
+
+  const cols = count === 1 ? 1 : count === 2 ? 2 : 3;
+  const rows = Math.ceil(count / cols);
+  area.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+  const areaH = area.clientHeight;
+  if (areaH > 0) {
+    if (rows <= 2) {
+      area.style.gridAutoRows = Math.floor(areaH / rows) + 'px';
+      area.style.overflowY = 'hidden';
+    } else {
+      // 3+ rows: fixed row height, let the area scroll
+      area.style.gridAutoRows = Math.floor(areaH / 2) + 'px';
+      area.style.overflowY = 'auto';
+    }
+  }
+}
+
 // ── Per-session panes ─────────────────────────────────────────────────────────
 function getOrCreatePane(sessionId) {
   if (state.panes[sessionId]) return state.panes[sessionId];
 
   const pane = document.createElement('div');
-  pane.className = 'agent-pane hidden';
+  const allActive = document.querySelector('.pane-tab.active')?.dataset.session === 'all';
+  pane.className = allActive ? 'agent-pane' : 'agent-pane hidden';
   pane.dataset.session = sessionId;
+  pane.dataset.color = state.paneColorIdx % 6;
+  state.paneColorIdx++;
   pane.innerHTML =
     `<div class="pane-header">` +
       `<div class="pane-dot" id="dot-${sessionId}"></div>` +
-      `<span>${sessionId.slice(0, 12)}</span>` +
+      `<span class="pane-title">${sessionId.slice(0, 12)}</span>` +
     `</div>` +
     `<div class="log-header"><span>TIME</span><span>TYPE</span><span>DETAIL</span></div>` +
     `<div class="log-body" id="body-${sessionId}"></div>`;
@@ -1090,6 +1142,7 @@ function getOrCreatePane(sessionId) {
   document.getElementById('paneTabs').appendChild(tab);
 
   state.panes[sessionId] = { pane, lastSeen: 0 };
+  requestAnimationFrame(updatePanesLayout);
   return state.panes[sessionId];
 }
 
@@ -1104,6 +1157,7 @@ function switchTab(sessionId) {
       p.classList.toggle('hidden', p.dataset.session !== sessionId)
     );
   }
+  requestAnimationFrame(updatePanesLayout);
 }
 
 document.getElementById('paneTabs').addEventListener('click', (e) => {
@@ -1162,6 +1216,38 @@ function ingest(ev) {
   if (evSid) state.projectSessions[proj].add(evSid);
 }
 
+// ── Reset UI (called on WS connect so server restart gives clean slate) ───────
+function resetUI() {
+  state.events = [];
+  state.panes = {};
+  state.paneColorIdx = 0;
+  state.currentProject = 'all';
+  state.projectSessions = {};
+  state.stats = { total: 0, pre: 0, post: 0, stop: 0, notify: 0, sub: 0 };
+  state.sessions = {};
+  state.tools = {};
+  state.rateBucket = [];
+
+  // Clear log and restore empty state placeholder
+  logBody.innerHTML = '';
+  logBody.appendChild(emptyState);
+
+  // Clear pane area and session tabs (keep the "All" tab)
+  const area = document.getElementById('panesArea');
+  area.innerHTML = '';
+  area.style.gridTemplateColumns = '1fr';
+  area.style.gridAutoRows = '100%';
+  area.style.overflowY = 'hidden';
+  const paneTabs = document.getElementById('paneTabs');
+  paneTabs.querySelectorAll('.pane-tab:not([data-session="all"])').forEach(t => t.remove());
+  paneTabs.querySelector('.pane-tab[data-session="all"]').classList.add('active');
+
+  // Clear project tabs (keep "All Projects")
+  const projectTabs = document.getElementById('projectTabs');
+  projectTabs.querySelectorAll('.project-tab:not([data-project="all"])').forEach(t => t.remove());
+  projectTabs.querySelector('.project-tab[data-project="all"]').classList.add('active');
+}
+
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 let ws;
 let reconnectTimer;
@@ -1173,6 +1259,7 @@ function connect() {
   ws.onopen = () => {
     connDot.className = 'conn-dot live';
     connLabel.textContent = 'LIVE';
+    resetUI();
   };
 
   ws.onmessage = (msg) => {
@@ -1220,6 +1307,7 @@ function renderWorkBoard(board) {
 }
 
 connect();
+window.addEventListener('resize', updatePanesLayout);
 setInterval(computeRate, 5000);
 
 // ── Scroll pause detection ────────────────────────────────────────────────────
