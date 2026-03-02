@@ -112,6 +112,59 @@ Update the path to point at your local `agent-dashboard` directory.
 
 Start Claude Code in your project as normal. Events will stream into the dashboard automatically.
 
+## Work Board (Agent Coordination)
+
+Sub-agents can claim tasks and check what others are doing to avoid duplicating work.
+
+### 1. Add the MCP server to your project
+
+In your project's `.claude/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "agent-dashboard": {
+      "type": "http",
+      "url": "http://localhost:8400/mcp"
+    }
+  }
+}
+```
+
+### 2. Add coordination instructions to your agent prompts
+
+> Before starting any task, call `read_board` to check what other agents are working on.
+> Call `claim_task` with your `session_id` and a short task description when you begin.
+> Call `release_task` when done.
+
+### Available MCP tools
+
+| Tool | Args | Description |
+|-|-|-|
+| `read_board` | — | Returns all active claims |
+| `claim_task` | `session_id`, `task` | Register what you're working on |
+| `release_task` | `session_id` | Clear your claim when done |
+
+## Multiple Projects
+
+If you run Claude Code in two separate projects simultaneously, each project appears as its own tab in the dashboard. Events from each project's agents are grouped under their project tab.
+
+To pin a project name (instead of using the directory name), set the env var in your hook config:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "matcher": ".*",
+      "hooks": [{
+        "type": "command",
+        "command": "AGENT_DASHBOARD_PROJECT=financial-app python /path/to/hooks/post_event.py"
+      }]
+    }]
+  }
+}
+```
+
 ## Dashboard features
 
 | Feature | Description |
