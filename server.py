@@ -6,6 +6,7 @@ serves the dashboard UI.
 """
 
 import json
+import threading
 import time
 from collections import deque
 from pathlib import Path
@@ -17,6 +18,7 @@ from fastapi.responses import HTMLResponse
 from mcp.server.fastmcp import FastMCP
 
 PORT = 8400
+MCP_PORT = 8401
 MAX_EVENTS = 500
 
 app = FastAPI(title="agent-dashboard")
@@ -37,7 +39,6 @@ async def board_broadcast() -> None:
 
 
 mcp_server = FastMCP("agent-dashboard-board")
-app.mount("/mcp", mcp_server.streamable_http_app())
 
 
 @mcp_server.tool()
@@ -106,5 +107,10 @@ async def serve_dashboard() -> HTMLResponse:
     return HTMLResponse(html_path.read_text(encoding="utf-8"))
 
 
+def _run_mcp() -> None:
+    uvicorn.run(mcp_server.streamable_http_app(), host="127.0.0.1", port=MCP_PORT, log_level="warning")
+
+
 if __name__ == "__main__":
+    threading.Thread(target=_run_mcp, daemon=True).start()
     uvicorn.run(app, host="127.0.0.1", port=PORT)

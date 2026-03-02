@@ -125,7 +125,7 @@ In your project's `.claude/settings.json`:
   "mcpServers": {
     "agent-dashboard": {
       "type": "http",
-      "url": "http://localhost:8400/mcp"
+      "url": "http://localhost:8401/mcp"
     }
   }
 }
