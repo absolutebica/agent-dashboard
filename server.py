@@ -14,6 +14,7 @@ from typing import Any
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
+from mcp.server.fastmcp import FastMCP
 
 PORT = 8400
 MAX_EVENTS = 500
@@ -33,6 +34,35 @@ async def board_broadcast() -> None:
         except Exception:
             dead.add(ws)
     clients.difference_update(dead)
+
+
+mcp_server = FastMCP("agent-dashboard-board")
+app.mount("/mcp", mcp_server.streamable_http_app())
+
+
+@mcp_server.tool()
+async def claim_task(session_id: str, task: str) -> str:
+    """Register what you are currently working on to coordinate with other agents.
+    Call this before starting any significant task. Pass your session_id from
+    the hook event payload."""
+    work_board[session_id] = task
+    await board_broadcast()
+    return "ok"
+
+
+@mcp_server.tool()
+async def release_task(session_id: str) -> str:
+    """Clear your task claim when you finish or abandon a task."""
+    work_board.pop(session_id, None)
+    await board_broadcast()
+    return "ok"
+
+
+@mcp_server.tool()
+async def read_board() -> list[dict[str, str]]:
+    """Return all currently claimed tasks so you can check before starting work.
+    If another agent has already claimed what you planned to do, pick something else."""
+    return [{"session_id": sid, "task": task} for sid, task in work_board.items()]
 
 
 async def broadcast(event: dict[str, Any]) -> None:
