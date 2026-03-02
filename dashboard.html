@@ -240,6 +240,43 @@ header::before {
 .log-body::-webkit-scrollbar-track { background: var(--bg); }
 .log-body::-webkit-scrollbar-thumb { background: var(--border-hi); }
 
+.project-tabs {
+  display: flex;
+  gap: 1px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-hi);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.project-tabs::-webkit-scrollbar { height: 2px; }
+.project-tabs::-webkit-scrollbar-thumb { background: var(--border-hi); }
+
+.project-tab {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-hud);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+
+.project-tab:hover { color: var(--text-hi); }
+
+.project-tab.active {
+  color: var(--amber-hi);
+  border-bottom-color: var(--amber);
+  text-shadow: 0 0 8px var(--amber);
+}
+
+.project-hidden { display: none !important; }
+
 .event-row {
   display: grid;
   grid-template-columns: 90px 90px 1fr;
@@ -545,6 +582,9 @@ header::before {
 
   <!-- EVENT LOG -->
   <div class="log-pane">
+    <div class="project-tabs" id="projectTabs">
+      <button class="project-tab active" data-project="all">All Projects</button>
+    </div>
     <div class="log-header">
       <span>TIME</span>
       <span>TYPE</span>
@@ -609,6 +649,8 @@ const state = {
   events: [],
   filter: 'all',
   paused: false,
+  currentProject: 'all',
+  projectSessions: {},
   stats: { total: 0, pre: 0, post: 0, stop: 0, notify: 0, sub: 0 },
   sessions: {},   // session_id → { id, count, lastSeen }
   tools: {},      // tool_name → count
@@ -896,6 +938,29 @@ function computeRate() {
   document.getElementById('rateNum').textContent = state.rateBucket.length;
 }
 
+// ── Project tabs ──────────────────────────────────────────────────────────────
+function getOrCreateProjectTab(project) {
+  if (document.querySelector(`.project-tab[data-project="${project}"]`)) return;
+  const tab = document.createElement('button');
+  tab.className = 'project-tab';
+  tab.dataset.project = project;
+  tab.textContent = project;
+  tab.addEventListener('click', () => switchProject(project));
+  document.getElementById('projectTabs').appendChild(tab);
+}
+
+function switchProject(project) {
+  state.currentProject = project;
+  document.querySelectorAll('.project-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.project === project)
+  );
+}
+
+document.getElementById('projectTabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.project-tab');
+  if (tab) switchProject(tab.dataset.project);
+});
+
 // ── Ingest event ──────────────────────────────────────────────────────────────
 function ingest(ev) {
   state.events.push(ev);
@@ -916,6 +981,15 @@ function ingest(ev) {
   updateStats();
   updateSessions(ev);
   updateTools(ev);
+
+  // Project tracking
+  const proj = ev.project || 'default';
+  if (!state.projectSessions[proj]) {
+    state.projectSessions[proj] = new Set();
+    getOrCreateProjectTab(proj);
+  }
+  const evSid = ev.session_id || '';
+  if (evSid) state.projectSessions[proj].add(evSid);
 }
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
