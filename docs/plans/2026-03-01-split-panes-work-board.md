@@ -304,7 +304,239 @@ git commit -m "feat: add live Work Board panel to sidebar"
 
 ---
 
-## Task 5: Add per-session panes to the event log
+## Task 5: Project grouping — send project field and group sessions by project
+
+**Files:**
+- Modify: `hooks/post_event.py`
+- Modify: `server.py`
+- Modify: `dashboard.html`
+
+Multiple independent projects can run simultaneously. This task adds a `project` field to every event so the dashboard can group agent panes by project and show top-level project tabs.
+
+### Part A — hook script sends project name
+
+**Step 1: Derive project name in post_event.py**
+
+Add at the top of `main()`, after parsing the event, before posting:
+
+```python
+import os
+from pathlib import Path
+
+# Derive project name from env var (user-settable) or cwd
+project = os.environ.get("AGENT_DASHBOARD_PROJECT") or Path.cwd().name
+event["project"] = project
+```
+
+This means:
+- Users can pin a project name by setting `AGENT_DASHBOARD_PROJECT=financial-app` in their shell or `.claude/settings.json` hook env
+- Falls back to the current working directory name (usually the repo root)
+
+**Step 2: Verify**
+
+```bash
+echo '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{}}' | py hooks/post_event.py
+```
+
+Expected: no error (server not running so it silently drops — that's fine).
+
+**Step 3: Commit**
+
+```bash
+git add hooks/post_event.py
+git commit -m "feat: add project field to hook events"
+```
+
+### Part B — server tracks projects
+
+**Step 4: Add projects dict to server.py**
+
+After `work_board: dict[str, Any] = {}` add:
+
+```python
+projects: dict[str, set[str]] = {}  # project → set of session_ids
+```
+
+**Step 5: Update ingest_event to register project→session mapping**
+
+In the `ingest_event` route, after `event_buffer.append(event)`, add:
+
+```python
+project = event.get("project", "default")
+session = event.get("session_id", "")
+if session:
+    projects.setdefault(project, set()).add(session)
+```
+
+**Step 6: Expose projects via REST so dashboard can bootstrap on connect**
+
+Add a new route:
+
+```python
+@app.get("/projects")
+async def get_projects() -> dict[str, list[str]]:
+    return {proj: list(sids) for proj, sids in projects.items()}
+```
+
+**Step 7: Verify**
+
+Syntax check: `py -c "import ast; ast.parse(open('server.py').read()); print('OK')"`
+
+**Step 8: Commit**
+
+```bash
+git add server.py
+git commit -m "feat: server tracks project→session mapping, exposes /projects"
+```
+
+### Part C — dashboard shows project tabs
+
+**Step 9: Add project state to JS state object**
+
+```javascript
+const state = {
+  // ...existing fields...
+  currentProject: 'all',   // 'all' or a project name
+  projectSessions: {},      // project → Set of session_ids
+};
+```
+
+**Step 10: Add project tab bar HTML above the pane tabs**
+
+Inside `.log-pane`, before the `pane-tabs` div, add:
+
+```html
+<div class="project-tabs" id="projectTabs">
+  <button class="project-tab active" data-project="all">All Projects</button>
+</div>
+```
+
+**Step 11: Add project tab CSS**
+
+```css
+.project-tabs {
+  display: flex;
+  gap: 1px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-hi);
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+
+.project-tab {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--text-dim);
+  font-family: var(--font-hud);
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  padding: 7px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all .15s;
+}
+
+.project-tab:hover { color: var(--text-hi); }
+
+.project-tab.active {
+  color: var(--amber-hi);
+  border-bottom-color: var(--amber);
+  text-shadow: 0 0 8px var(--amber);
+}
+```
+
+**Step 12: Add getOrCreateProjectTab and switchProject functions to JS**
+
+```javascript
+function getOrCreateProjectTab(project) {
+  if (document.querySelector(`.project-tab[data-project="${project}"]`)) return;
+  const tab = document.createElement('button');
+  tab.className = 'project-tab';
+  tab.dataset.project = project;
+  tab.textContent = project;
+  tab.addEventListener('click', () => switchProject(project));
+  document.getElementById('projectTabs').appendChild(tab);
+}
+
+function switchProject(project) {
+  state.currentProject = project;
+  document.querySelectorAll('.project-tab').forEach(t =>
+    t.classList.toggle('active', t.dataset.project === project)
+  );
+  // Show/hide agent panes based on project membership
+  document.querySelectorAll('.agent-pane[data-session]').forEach(pane => {
+    const sid = pane.dataset.session;
+    if (sid === 'all') return; // always keep the all-pane managed by switchTab
+    const inProject = project === 'all' ||
+      (state.projectSessions[project] && state.projectSessions[project].has(sid));
+    pane.classList.toggle('project-hidden', !inProject);
+  });
+  // Also hide agent tabs for sessions not in this project
+  document.querySelectorAll('.pane-tab[data-session]').forEach(tab => {
+    const sid = tab.dataset.session;
+    if (sid === 'all') return;
+    const inProject = project === 'all' ||
+      (state.projectSessions[project] && state.projectSessions[project].has(sid));
+    tab.classList.toggle('project-hidden', !inProject);
+  });
+}
+```
+
+Add CSS: `.project-hidden { display: none !important; }`
+
+**Step 13: Wire project registration into ingest()**
+
+In `ingest(ev)`, after the session_id pane creation block, add:
+
+```javascript
+const proj = ev.project || 'default';
+if (!state.projectSessions[proj]) {
+  state.projectSessions[proj] = new Set();
+  getOrCreateProjectTab(proj);
+}
+state.projectSessions[proj].add(sid || '');
+```
+
+**Step 14: Wire project tab bar click handler**
+
+```javascript
+document.getElementById('projectTabs').addEventListener('click', (e) => {
+  const tab = e.target.closest('.project-tab');
+  if (tab) switchProject(tab.dataset.project);
+});
+```
+
+**Step 15: Verify with two projects**
+
+With server running:
+
+```bash
+curl -s -X POST http://localhost:8400/event \
+  -H "Content-Type: application/json" \
+  -d '{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{},"session_id":"s1","project":"financial-app","ts":1}'
+
+curl -s -X POST http://localhost:8400/event \
+  -H "Content-Type: application/json" \
+  -d '{"hook_event_name":"PreToolUse","tool_name":"Write","tool_input":{},"session_id":"s2","project":"api-refactor","ts":2}'
+```
+
+Expected:
+- Two project tabs appear: "financial-app" and "api-refactor"
+- Clicking "financial-app" shows only s1's pane
+- Clicking "All Projects" shows both
+
+**Step 16: Commit**
+
+```bash
+git add dashboard.html
+git commit -m "feat: project tabs group agent panes by project"
+```
+
+---
+
+## Task 6: Add per-session panes to the event log
 
 **Files:**
 - Modify: `dashboard.html`
@@ -579,7 +811,7 @@ git commit -m "feat: split panes with per-session tabs and activity dots"
 
 ---
 
-## Task 6: Update example config and README
+## Task 7: Update example config and README
 
 **Files:**
 - Modify: `example-hooks.json`
