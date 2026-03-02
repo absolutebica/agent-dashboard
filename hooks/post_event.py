@@ -5,6 +5,7 @@ context, then POSTs to agent-dashboard.
 """
 
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -100,7 +101,6 @@ def main() -> None:
 
         event = json.loads(raw)
         event["ts"] = time.time()
-        import os
         project = os.environ.get("AGENT_DASHBOARD_PROJECT") or Path.cwd().name
         event["project"] = project
 

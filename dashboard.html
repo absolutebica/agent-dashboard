@@ -825,6 +825,7 @@ function createRow(ev) {
   const row = document.createElement('div');
   row.className = `event-row type-${type}`;
   row.dataset.type = type;
+  row.dataset.project = ev.project || 'default';
 
   row.innerHTML =
     `<div class="ev-time">${formatTime(ev.ts)}</div>` +
@@ -954,6 +955,11 @@ function switchProject(project) {
   document.querySelectorAll('.project-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.project === project)
   );
+  // Filter event rows by project
+  document.querySelectorAll('#logBody .event-row').forEach(row => {
+    const rowProject = row.dataset.project || 'default';
+    row.classList.toggle('project-hidden', project !== 'all' && rowProject !== project);
+  });
 }
 
 document.getElementById('projectTabs').addEventListener('click', (e) => {
@@ -1037,9 +1043,14 @@ function renderWorkBoard(board) {
   entries.forEach(([sid, task]) => {
     const item = document.createElement('div');
     item.className = 'board-item';
-    item.innerHTML =
-      `<div class="board-sid">${sid.slice(0, 10)}</div>` +
-      `<div class="board-task">${task}</div>`;
+    const sidEl = document.createElement('div');
+    sidEl.className = 'board-sid';
+    sidEl.textContent = sid.slice(0, 10);
+    const taskEl = document.createElement('div');
+    taskEl.className = 'board-task';
+    taskEl.textContent = task;
+    item.appendChild(sidEl);
+    item.appendChild(taskEl);
     el.appendChild(item);
   });
 }
